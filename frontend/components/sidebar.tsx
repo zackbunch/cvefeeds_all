@@ -46,7 +46,7 @@ const navigation = [
   {
     title: "Vulnerability Intel.",
     items: [
-      { title: "Newsfeed", icon: Newspaper, href: "#" },
+      { title: "Newsfeed", icon: Newspaper, href: "/news" },
       { title: "Open Source Vulns", icon: GitBranch, href: "#" },
       { title: "Emerging", icon: AlertTriangle, href: "#" },
     ],
@@ -83,7 +83,7 @@ export function Sidebar() {
   }, [])
 
   return (
-    <>
+    <div className="fixed left-0 top-16 w-64 h-[calc(100vh-4rem)] bg-white border-r shadow-sm z-40">
       <Button
         variant="ghost"
         size="icon"
@@ -119,7 +119,7 @@ export function Sidebar() {
           ))}
         </nav>
       </div>
-    </>
+    </div>
   )
 }
 
