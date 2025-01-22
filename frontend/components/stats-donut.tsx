@@ -1,11 +1,14 @@
 "use client"
 
 import { useEffect, useRef, useState } from "react"
-import { Chart, type ChartConfiguration } from "chart.js/auto"
+import { Chart as ChartJS, ArcElement, Tooltip, Legend } from 'chart.js'
+import { Doughnut } from 'react-chartjs-2'
+
+ChartJS.register(ArcElement, Tooltip, Legend)
 
 export function StatsDonut() {
   const chartRef = useRef<HTMLCanvasElement>(null)
-  const [chart, setChart] = useState<Chart | null>(null)
+  const [chart, setChart] = useState<ChartJS | null>(null)
 
   const [stats, setStats] = useState({
     created: { daily: 34, weekly: 1221 },
@@ -18,30 +21,41 @@ export function StatsDonut() {
     const ctx = chartRef.current.getContext("2d")
     if (!ctx) return
 
-    const chartConfig: ChartConfiguration = {
-      type: "doughnut",
-      data: {
-        datasets: [
-          {
-            data: [stats.created.daily, stats.updated.daily],
-            backgroundColor: ["#4F46E5", "#F97316"],
-            borderWidth: 0,
-          },
-        ],
-      },
-      options: {
-        responsive: true,
-        maintainAspectRatio: false,
-        cutout: "70%",
-        plugins: {
-          legend: {
-            display: false,
-          },
+    const data = {
+      labels: ['New', 'Updated', 'Unchanged'],
+      datasets: [
+        {
+          data: [stats.created.daily, stats.updated.daily, 0],
+          backgroundColor: [
+            'rgba(54, 162, 235, 0.8)',
+            'rgba(255, 99, 132, 0.8)',
+            'rgba(255, 206, 86, 0.8)',
+          ],
+          borderColor: [
+            'rgba(54, 162, 235, 1)',
+            'rgba(255, 99, 132, 1)',
+            'rgba(255, 206, 86, 1)',
+          ],
+          borderWidth: 1,
         },
-      },
+      ],
     }
 
-    const newChart = new Chart(ctx, chartConfig)
+    const options = {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: {
+          display: false,
+        },
+      },
+    } as const
+
+    const newChart = new ChartJS(ctx, {
+      type: 'doughnut',
+      data: data,
+      options: options,
+    })
     setChart(newChart)
 
     return () => newChart.destroy()

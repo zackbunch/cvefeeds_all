@@ -1,0 +1,35 @@
+version: '3.8'
+
+services:
+  backend:
+    build: 
+      context: ./backend
+      dockerfile: Dockerfile
+    ports:
+      - "8080:8080"
+    container_name: cve-backend
+    restart: unless-stopped
+    networks:
+      - cve-network
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=development
+    container_name: cve-frontend
+    restart: unless-stopped
+    depends_on:
+      - backend
+    networks:
+      - cve-network
+    volumes:
+      - ./frontend:/app
+    command: npm run dev  # Run in development mode
+
+networks:
+  cve-network:
+    driver: bridge
