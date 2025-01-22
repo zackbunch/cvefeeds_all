@@ -1,10 +1,13 @@
 package main
 
 import (
-	"encoding/json"
+	"encoding/xml"
 	"log"
 	"net/http"
+	"sync"
 	"time"
+
+	"github.com/gin-gonic/gin"
 )
 
 type CVE struct {
@@ -23,24 +26,68 @@ type NewsItem struct {
 	PublishedAt time.Time `json:"publishedAt"`
 }
 
-func main() {
-	http.HandleFunc("/api/top-cves", handleTopCVEs)
-	http.HandleFunc("/api/security-news", handleSecurityNews)
-	log.Println("Starting server on :8080")
-	log.Fatal(http.ListenAndServe(":8080", nil))
+type CVEFeed struct {
+	Items []CVEItem `xml:"channel>item"`
 }
 
-func handleTopCVEs(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-		return
+type CVEItem struct {
+	Title       string `xml:"title" json:"title"`
+	Link        string `xml:"link" json:"link"`
+	Description string `xml:"description" json:"description"`
+	PubDate     string `xml:"pubDate" json:"pubDate"`
+}
+
+var (
+	cveCache      []CVEItem
+	cacheMutex    sync.Mutex
+	lastFetch     time.Time
+	cacheDuration = 25 * time.Minute
+)
+
+func main() {
+	r := gin.Default()
+
+	// Enable CORS
+	r.Use(func(c *gin.Context) {
+		c.Writer.Header().Set("Access-Control-Allow-Origin", "*")
+		c.Writer.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+		c.Writer.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+		if c.Request.Method == "OPTIONS" {
+			c.AbortWithStatus(204)
+			return
+		}
+		c.Next()
+	})
+
+	// API routes
+	api := r.Group("/api")
+	{
+		api.GET("/top-cves", handleTopCVEs)
+		api.GET("/latest-cves", handleLatestCVEs)
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	w.Header().Set("Access-Control-Allow-Origin", "*")
+	log.Println("Starting server on :8080")
+	r.Run(":8080")
+}
 
-	// TODO: Implement actual CVE fetching logic
-	// This is just example data
+// Fetch the latest CVEs from the RSS feed
+func fetchLatestCVEs() ([]CVEItem, error) {
+	resp, err := http.Get("https://cvefeed.io/rssfeed/latest.xml")
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	var feed CVEFeed
+	if err := xml.NewDecoder(resp.Body).Decode(&feed); err != nil {
+		return nil, err
+	}
+
+	return feed.Items, nil
+}
+
+func handleTopCVEs(c *gin.Context) {
+	// Example data for now
 	cves := []CVE{
 		{
 			ID:          "CVE-2024-0001",
@@ -51,35 +98,36 @@ func handleTopCVEs(w http.ResponseWriter, r *http.Request) {
 		},
 	}
 
-	json.NewEncoder(w).Encode(cves)
+	c.JSON(http.StatusOK, cves)
 }
 
-func handleSecurityNews(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+func handleLatestCVEs(c *gin.Context) {
+	cacheMutex.Lock()
+	defer cacheMutex.Unlock()
+
+	// Check if cache is still valid
+	if time.Since(lastFetch) <= cacheDuration && len(cveCache) > 0 {
+		c.JSON(http.StatusOK, cveCache)
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	w.Header().Set("Access-Control-Allow-Origin", "*")
+	// Fetch fresh data
+	resp, err := http.Get("https://cvefeed.io/rssfeed/latest.xml")
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch CVE feed"})
+		return
+	}
+	defer resp.Body.Close()
 
-	// Example news data - we'll replace this with real API calls later
-	news := []NewsItem{
-		{
-			Title:       "Major Security Vulnerability Found in Popular Framework",
-			Description: "Researchers have discovered a critical vulnerability affecting millions of users...",
-			URL:         "https://example.com/security-news/1",
-			Source:      "Security Weekly",
-			PublishedAt: time.Now().Add(-24 * time.Hour),
-		},
-		{
-			Title:       "New Ransomware Strain Targets Healthcare Sector",
-			Description: "A sophisticated ransomware operation has been detected targeting healthcare institutions...",
-			URL:         "https://example.com/security-news/2",
-			Source:      "Threat Post",
-			PublishedAt: time.Now().Add(-48 * time.Hour),
-		},
+	var feed CVEFeed
+	if err := xml.NewDecoder(resp.Body).Decode(&feed); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to parse CVE feed"})
+		return
 	}
 
-	json.NewEncoder(w).Encode(news)
+	// Update cache
+	cveCache = feed.Items
+	lastFetch = time.Now()
+
+	c.JSON(http.StatusOK, cveCache)
 }
